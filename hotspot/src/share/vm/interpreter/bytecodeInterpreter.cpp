@@ -681,27 +681,27 @@ BytecodeInterpreter::run(interpreterState istate) {
       if (METHOD->is_synchronized()) {
           // oop rcvr = locals[0].j.r;
           oop rcvr;
-          if (METHOD->is_static()) {
+          if (METHOD->is_static()) {//需要根据当前方法是否为静态方法，确定锁对象
             rcvr = METHOD->constants()->pool_holder()->java_mirror();
           } else {
             rcvr = LOCALS_OBJECT(0);
             VERIFY_OOP(rcvr);
           }
           // The initial monitor is ours for the taking
-          BasicObjectLock* mon = &istate->monitor_base()[-1];
+          BasicObjectLock* mon = &istate->monitor_base()[-1];//BasicObjectLock*这里可以理解为Lock Record的一个封装
           oop monobj = mon->obj();
           assert(mon->obj() == rcvr, "method monitor mis-initialized");
 
           bool success = UseBiasedLocking;
           if (UseBiasedLocking) { //如果启用了偏向锁
-            markOop mark = rcvr->mark();
-            if (mark->has_bias_pattern()) { //目前是处于偏向锁状态
+            markOop mark = rcvr->mark();//获取当前锁对象的Mark Word
+            if (mark->has_bias_pattern()) { //目前是处于偏向锁状态  如果锁对象Mark Word当前处于偏向模式，可能偏向一个线程，也可能是匿名偏向
               // The bias pattern is present in the object's header. Need to check
               // whether the bias owner and the epoch are both still current.
               intptr_t xx = ((intptr_t) THREAD) ^ (intptr_t) mark;
               xx = (intptr_t) rcvr->klass()->prototype_header() ^ xx;
               intptr_t yy = (xx & ~((int) markOopDesc::age_mask_in_place));
-              if (yy != 0 ) {
+              if (yy != 0 ) {//yy !=0 代表锁对象当前偏向的线程不是本线程
                 // At this point we know that the header has the bias pattern and
                 // that we are not the bias owner in the current epoch. We need to
                 // figure out more details about the state of the header in order to
@@ -712,7 +712,7 @@ BytecodeInterpreter::run(interpreterState istate) {
                 // the prototype header is no longer biased and we have to revoke
                 // the bias on this object.
 
-                if (yy & markOopDesc::biased_lock_mask_in_place == 0 ) {
+                if (yy & markOopDesc::biased_lock_mask_in_place == 0 ) {//说明该锁对象所属class的偏向仍然为启用状态
                   // Biasing is still enabled for this data type. See whether the
                   // epoch of the current bias is still valid, meaning that the epoch
                   // bits of the mark word are equal to the epoch bits of the
